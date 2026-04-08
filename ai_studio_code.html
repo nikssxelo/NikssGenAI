@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en" class="">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NikssGen AI</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Marked.js for Markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #8884; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #8886; }
+
+        /* Prevent Layout Shift & Handle Mobile */
+        body { 
+            overflow: hidden; 
+            overscroll-behavior: none; 
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        
+        .chat-container {
+            height: 100dvh; /* Dynamic viewport height for mobile */
+        }
+
+        /* Markdown Styling */
+        .prose pre {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+        }
+        .prose code { font-family: monospace; background: #0002; padding: 0.2rem 0.4rem; border-radius: 0.25rem; }
+        .dark .prose code { background: #fff2; }
+        .prose p { margin-bottom: 0.75rem; }
+        .prose ul { list-style-type: disc; padding-left: 1.5rem; }
+
+        /* Loader Animation */
+        #loading {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: white; z-index: 9999; display: flex;
+            align-items: center; justify-content: center; font-family: sans-serif;
+        }
+        .dark #loading { background: #111; color: white; }
+
+        /* Sidebar Transition */
+        #sidebar { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        
+        /* Cursor pulse for streaming */
+        .typing-cursor::after {
+            content: '●';
+            animation: blink 1s infinite;
+            margin-left: 4px;
+            font-size: 0.8rem;
+            vertical-align: middle;
+        }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    </style>
+    <script>
+        // Configure Tailwind Dark Mode
+        tailwind.config = { darkMode: 'class' }
+    </script>
+</head>
+<body class="bg-gray-50 text-gray-900 dark:bg-zinc-900 dark:text-gray-100">
+
+    <!-- Loading Fallback -->
+    <div id="loading">
+        <div class="flex flex-col items-center">
+            <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p class="font-medium animate-pulse text-blue-600 dark:text-blue-400">NikssGen AI is initializing...</p>
+        </div>
+    </div>
+
+    <div class="chat-container flex flex-row relative">
+        
+        <!-- Sidebar Backdrop (Mobile) -->
+        <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden lg:hidden"></div>
+
+        <!-- Sidebar -->
+        <aside id="sidebar" class="fixed lg:static inset-y-0 left-0 w-72 bg-gray-100 dark:bg-zinc-950 border-r border-gray-200 dark:border-zinc-800 z-50 -translate-x-full lg:translate-x-0">
+            <div class="h-full flex flex-col p-4">
+                <button onclick="createNewChat()" class="flex items-center gap-3 w-full p-3 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl hover:bg-gray-50 dark:hover:bg-zinc-800 transition-all shadow-sm mb-6">
+                    <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    <span class="font-medium text-sm">New chat</span>
+                </button>
+
+                <div class="flex-1 overflow-y-auto space-y-2" id="chat-list">
+                    <!-- Chat history items injected here -->
+                </div>
+
+                <div class="mt-auto pt-4 border-t border-gray-200 dark:border-zinc-800 space-y-2">
+                    <button onclick="toggleDarkMode()" class="flex items-center gap-3 w-full p-2 hover:bg-gray-200 dark:hover:bg-zinc-800 rounded-lg transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+                        <span class="text-sm">Appearance</span>
+                    </button>
+                    <button onclick="openSettings()" class="flex items-center gap-3 w-full p-2 hover:bg-gray-200 dark:hover:bg-zinc-800 rounded-lg transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        <span class="text-sm">Settings</span>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col h-full min-w-0 bg-white dark:bg-zinc-900 relative">
+            
+            <!-- Top Header -->
+            <header class="h-14 flex items-center justify-between px-4 border-b border-gray-100 dark:border-zinc-800">
+                <button onclick="toggleSidebar()" class="lg:hidden p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+                <div class="flex items-center gap-2">
+                    <span class="font-bold text-xl bg-gradient-to-r from-blue-600 to-indigo-500 bg-clip-text text-transparent">NikssGen AI</span>
+                </div>
+                <div class="w-10"></div> <!-- Spacer -->
+            </header>
+
+            <!-- Messages Area -->
+            <div id="messages" class="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
+                <!-- Welcome State -->
+                <div id="welcome-screen" class="h-full flex flex-col items-center justify-center text-center space-y-4 max-w-2xl mx-auto">
+                    <h1 class="text-4xl font-bold text-gray-800 dark:text-gray-100 tracking-tight">I'm NikssGen AI.</h1>
+                    <p class="text-gray-500 dark:text-gray-400">Setup your API key in settings to begin our conversation. All data is kept in your browser.</p>
+                </div>
+            </div>
+
+            <!-- Input Bar -->
+            <div class="p-4 md:p-6 bg-gradient-to-t from-white via-white dark:from-zinc-900 dark:via-zinc-900 to-transparent">
+                <div class="max-w-4xl mx-auto relative">
+                    <div class="relative flex items-end gap-2 bg-gray-100 dark:bg-zinc-800 p-2 rounded-3xl border border-transparent focus-within:border-gray-300 dark:focus-within:border-zinc-600 transition-all">
+                        <textarea id="user-input" rows="1" placeholder="Type a message..." 
+                            class="flex-1 bg-transparent border-none focus:ring-0 resize-none py-3 px-4 max-h-64 text-base"
+                            oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"></textarea>
+                        <button id="send-btn" onclick="handleSubmit()" class="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                            <svg class="w-5 h-5 rotate-90" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="fixed inset-0 bg-black/60 z-[100] hidden flex items-center justify-center p-4 backdrop-blur-sm">
+            <div class="bg-white dark:bg-zinc-900 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+                <div class="p-6 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center">
+                    <h2 class="text-xl font-bold">NikssGen Configuration</h2>
+                    <button onclick="closeSettings()" class="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <div class="p-6 space-y-5">
+                    <div>
+                        <label class="block text-sm font-medium mb-1.5 opacity-70">OpenRouter API Key</label>
+                        <input type="password" id="api-key" placeholder="sk-or-v1-..." class="w-full bg-gray-100 dark:bg-zinc-800 border-none rounded-xl p-3 text-sm focus:ring-2 ring-blue-500 transition-all">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1.5 opacity-70">Model Name</label>
+                        <input type="text" id="model-name" placeholder="deepseek/deepseek-r1:free" class="w-full bg-gray-100 dark:bg-zinc-800 border-none rounded-xl p-3 text-sm focus:ring-2 ring-blue-500 transition-all">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1.5 opacity-70">System Prompt</label>
+                        <textarea id="system-prompt" rows="3" placeholder="You are NikssGen AI..." class="w-full bg-gray-100 dark:bg-zinc-800 border-none rounded-xl p-3 text-sm focus:ring-2 ring-blue-500 transition-all"></textarea>
+                    </div>
+                    <button onclick="saveSettings()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-blue-500/20">
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPT PLACEMENT AT END OF BODY -->
+    <script>
+        // --- State Management ---
+        let state = {
+            chats: [],
+            currentChatId: null,
+            settings: {
+                apiKey: '',
+                model: 'deepseek/deepseek-r1:free',
+                systemPrompt: 'You are NikssGen AI, a highly capable assistant.',
+                darkMode: false
+            }
+        };
+
+        // --- Initialization ---
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedState = localStorage.getItem('nikssgen_ai_state');
+            if (savedState) {
+                try {
+                    const parsed = JSON.parse(savedState);
+                    state = { ...state, ...parsed };
+                } catch (e) { console.error("Recovery failed", e); }
+            }
+
+            // Sync Settings UI
+            document.getElementById('api-key').value = state.settings.apiKey || '';
+            document.getElementById('model-name').value = state.settings.model || 'deepseek/deepseek-r1:free';
+            document.getElementById('system-prompt').value = state.settings.systemPrompt || '';
+            
+            if (state.settings.darkMode) {
+                document.documentElement.classList.add('dark');
+            }
+
+            renderChatList();
+            if (state.currentChatId) loadChat(state.currentChatId);
+
+            // Force hide loader after initialization
+            setTimeout(() => {
+                document.getElementById('loading').style.display = 'none';
+            }, 800);
+        });
+
+        function saveToLocalStorage() {
+            localStorage.setItem('nikssgen_ai_state', JSON.stringify(state));
+        }
+
+        // --- Chat Operations ---
+        function createNewChat() {
+            const newChat = {
+                id: Date.now().toString(),
+                title: 'New Conversation',
+                messages: []
+            };
+            state.chats.unshift(newChat);
+            state.currentChatId = newChat.id;
+            saveToLocalStorage();
+            renderChatList();
+            loadChat(newChat.id);
+            if (window.innerWidth < 1024) toggleSidebar();
+        }
+
+        function loadChat(id) {
+            state.currentChatId = id;
+            const chat = state.chats.find(c => c.id === id);
+            const container = document.getElementById('messages');
+            const welcome = document.getElementById('welcome-screen');
+            
+            container.innerHTML = '';
+            
+            if (!chat || chat.messages.length === 0) {
+                container.appendChild(welcome);
+                welcome.classList.remove('hidden');
+            } else {
+                welcome.classList.add('hidden');
+                chat.messages.forEach(msg => {
+                    appendMessageUI(msg.role, msg.content);
+                });
+                container.scrollTo(0, container.scrollHeight);
+            }
+            renderChatList();
+            saveToLocalStorage();
+        }
+
+        function deleteChat(id, event) {
+            event.stopPropagation();
+            state.chats = state.chats.filter(c => c.id !== id);
+            if (state.currentChatId === id) {
+                state.currentChatId = state.chats.length > 0 ? state.chats[0].id : null;
+            }
+            saveToLocalStorage();
+            renderChatList();
+            if (state.currentChatId) loadChat(state.currentChatId);
+            else location.reload();
+        }
+
+        function renameChat(id, event) {
+            event.stopPropagation();
+            const newName = prompt("Rename your chat:", "Conversation Name");
+            if (newName) {
+                const chat = state.chats.find(c => c.id === id);
+                if (chat) chat.title = newName;
+                saveToLocalStorage();
+                renderChatList();
+            }
+        }
+
+        // --- UI Rendering ---
+        function renderChatList() {
+            const list = document.getElementById('chat-list');
+            list.innerHTML = state.chats.map(chat => `
+                <div onclick="loadChat('${chat.id}')" class="group flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all ${state.currentChatId === chat.id ? 'bg-blue-100/50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800' : 'hover:bg-gray-200 dark:hover:bg-zinc-800 border border-transparent'}">
+                    <div class="flex items-center gap-3 overflow-hidden">
+                        <svg class="w-4 h-4 flex-shrink-0 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+                        <span class="text-sm truncate font-medium">${chat.title}</span>
+                    </div>
+                    <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onclick="renameChat('${chat.id}', event)" class="p-1 hover:text-blue-500"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button>
+                        <button onclick="deleteChat('${chat.id}', event)" class="p-1 hover:text-red-500"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function appendMessageUI(role, content, isStreaming = false) {
+            const container = document.getElementById('messages');
+            document.getElementById('welcome-screen').classList.add('hidden');
+            
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `flex ${role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in duration-300`;
+            
+            const innerContent = role === 'user' 
+                ? `<div class="max-w-[85%] bg-blue-600 text-white px-4 py-3 rounded-2xl shadow-sm">${content}</div>`
+                : `<div class="flex gap-4 max-w-[90%] md:max-w-[80%]">
+                    <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold shadow-md">NG</div>
+                    <div class="prose prose-sm dark:prose-invert leading-relaxed content-area ${isStreaming ? 'typing-cursor' : ''}">
+                        ${marked.parse(content)}
+                    </div>
+                   </div>`;
+            
+            msgDiv.innerHTML = innerContent;
+            container.appendChild(msgDiv);
+            container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+            return msgDiv;
+        }
+
+        // --- Core API Logic ---
+        async function handleSubmit() {
+            const inputEl = document.getElementById('user-input');
+            const btnEl = document.getElementById('send-btn');
+            const promptText = inputEl.value.trim();
+            
+            if (!promptText || btnEl.disabled) return;
+            if (!state.settings.apiKey) {
+                alert("Please add an OpenRouter API Key in settings first.");
+                openSettings();
+                return;
+            }
+
+            // Create chat if none exists
+            if (!state.currentChatId) {
+                const newId = Date.now().toString();
+                state.chats.unshift({ id: newId, title: promptText.substring(0, 30) + '...', messages: [] });
+                state.currentChatId = newId;
+            }
+
+            const chat = state.chats.find(c => c.id === state.currentChatId);
+            
+            // UI Updates
+            appendMessageUI('user', promptText);
+            inputEl.value = '';
+            inputEl.style.height = 'auto';
+            btnEl.disabled = true;
+
+            // Add to state
+            chat.messages.push({ role: 'user', content: promptText });
+            
+            // Create AI placeholder for streaming
+            const aiMsgDiv = appendMessageUI('assistant', '', true);
+            const contentArea = aiMsgDiv.querySelector('.content-area');
+            let fullResponse = '';
+
+            try {
+                const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${state.settings.apiKey}`,
+                        "Content-Type": "application/json",
+                        "X-Title": "NikssGen AI"
+                    },
+                    body: JSON.stringify({
+                        model: state.settings.model,
+                        messages: [
+                            { role: "system", content: state.settings.systemPrompt },
+                            ...chat.messages
+                        ],
+                        stream: true
+                    })
+                });
+
+                if (!response.ok) throw new Error(await response.text());
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = line.slice(6);
+                            if (data === '[DONE]') continue;
+                            try {
+                                const parsed = JSON.parse(data);
+                                const token = parsed.choices[0]?.delta?.content || '';
+                                fullResponse += token;
+                                contentArea.innerHTML = marked.parse(fullResponse);
+                                document.getElementById('messages').scrollTo(0, document.getElementById('messages').scrollHeight);
+                            } catch (e) {}
+                        }
+                    }
+                }
+
+                // Finalize
+                contentArea.classList.remove('typing-cursor');
+                chat.messages.push({ role: 'assistant', content: fullResponse });
+                saveToLocalStorage();
+
+            } catch (error) {
+                console.error(error);
+                contentArea.innerHTML = `<span class="text-red-500 font-medium">Error: ${error.message}</span>`;
+            } finally {
+                btnEl.disabled = false;
+            }
+        }
+
+        // --- Settings & UI Helpers ---
+        function openSettings() { document.getElementById('settings-modal').classList.remove('hidden'); }
+        function closeSettings() { document.getElementById('settings-modal').classList.add('hidden'); }
+        
+        function saveSettings() {
+            state.settings.apiKey = document.getElementById('api-key').value.trim();
+            state.settings.model = document.getElementById('model-name').value.trim() || 'deepseek/deepseek-r1:free';
+            state.settings.systemPrompt = document.getElementById('system-prompt').value.trim();
+            saveToLocalStorage();
+            closeSettings();
+        }
+
+        function toggleSidebar() {
+            const sb = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            const isHidden = sb.classList.contains('-translate-x-full');
+            
+            if (isHidden) {
+                sb.classList.remove('-translate-x-full');
+                overlay.classList.remove('hidden');
+            } else {
+                sb.classList.add('-translate-x-full');
+                overlay.classList.add('hidden');
+            }
+        }
+
+        document.getElementById('sidebar-overlay').onclick = toggleSidebar;
+
+        function toggleDarkMode() {
+            state.settings.darkMode = !state.settings.darkMode;
+            document.documentElement.classList.toggle('dark');
+            saveToLocalStorage();
+        }
+
+        // Handle Enter key for sending (but allow Shift+Enter for new lines)
+        document.getElementById('user-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey && window.innerWidth > 768) {
+                e.preventDefault();
+                handleSubmit();
+            }
+        });
+    </script>
+</body>
+</html>
